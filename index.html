@@ -62,6 +62,7 @@
             width: 100%;
             font-weight: 600;
             cursor: pointer;
+            transition: background 0.3s;
         }
 
         button:hover {
@@ -72,44 +73,43 @@
             background: #ccc;
         }
 
-        .post {
-            background: #fff;
-            border: 1px solid #eaeaea;
-            padding: 15px;
-            margin-top: 15px;
-            border-radius: 8px;
-            width: 100%;
-            max-width: 500px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        .message-box {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
         }
 
-        .post-header {
+        .message-box .message {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 80%;
         }
 
-        .post-avatar {
+        .message-box .message.self {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .message-box .message.other {
+            background-color: #f1f1f1;
+            color: black;
+        }
+
+        .message-box .message .avatar {
             width: 30px;
             height: 30px;
             border-radius: 50%;
         }
 
         .time {
-            font-size: 11px;
-            color: #999;
+            font-size: 12px;
+            color: #aaa;
             margin-left: auto;
-        }
-
-        .chat-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .message-box {
-            margin-top: 10px;
         }
     </style>
 </head>
@@ -125,11 +125,11 @@
 
     <div id="messageForm" class="container" style="display: none;">
         <h3>Чат</h3>
+        <div class="message-box" id="messageBox"></div>
+
         <input type="text" id="content" placeholder="Введите сообщение">
         <button id="sendMessageBtn">Отправить</button>
     </div>
-
-    <div id="feed" style="width: 100%; max-width: 500px;"></div>
 
     <div id="chatControls" class="container" style="display: none;">
         <select id="selectUser">
@@ -145,13 +145,13 @@
   import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
   const firebaseConfig = {
-    apiKey: "AIzaSyCQsBDdxkA4dWhaTM6w9_jzzmEkZbh1Y4A",
-    authDomain: "project-3574e.firebaseapp.com",
-    projectId: "project-3574e",
-    storageBucket: "project-3574e.firebasestorage.app",
-    messagingSenderId: "173194596075",
-    appId: "1:173194596075:web:27a2ba28b0adac358978ae",
-    measurementId: "G-D602P1V71T"
+  apiKey: "AIzaSyCQsBDdxkA4dWhaTM6w9_jzzmEkZbh1Y4A",
+  authDomain: "project-3574e.firebaseapp.com",
+  projectId: "project-3574e",
+  storageBucket: "project-3574e.firebasestorage.app",
+  messagingSenderId: "173194596075",
+  appId: "1:173194596075:web:27a2ba28b0adac358978ae",
+  measurementId: "G-D602P1V71T"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -239,19 +239,19 @@
       const chatDoc = doc(db, "chats", chatId);
       const chatData = (await getDoc(chatDoc)).data();
 
-      const feed = document.getElementById('feed');
-      feed.innerHTML = "";
+      const messageBox = document.getElementById('messageBox');
+      messageBox.innerHTML = "";
       chatData.messages.forEach(message => {
-        feed.innerHTML += `
-          <div class="post">
-            <div class="post-header">
-              <img src="${message.senderId === auth.currentUser.uid ? auth.currentUser.photoURL : 'https://via.placeholder.com/30'}" class="post-avatar">
-              <b>${message.senderId === auth.currentUser.uid ? auth.currentUser.displayName : 'Другой пользователь'}</b>
-              <span class="time">${message.timestamp.toDate().toLocaleTimeString()}</span>
-            </div>
-            <p>${message.message}</p>
-          </div>
+        const messageDiv = document.createElement("div");
+        messageDiv.classList.add("message");
+        messageDiv.classList.add(message.senderId === auth.currentUser.uid ? "self" : "other");
+        
+        messageDiv.innerHTML = `
+          <img class="avatar" src="${message.senderId === auth.currentUser.uid ? auth.currentUser.photoURL : 'https://via.placeholder.com/30'}" />
+          <span>${message.message}</span>
+          <span class="time">${message.timestamp.toDate().toLocaleTimeString()}</span>
         `;
+        messageBox.appendChild(messageDiv);
       });
     }
   };
