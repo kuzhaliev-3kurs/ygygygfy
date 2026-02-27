@@ -62,15 +62,10 @@
             width: 100%;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.3s;
         }
 
         button:hover {
             background: #0056b3;
-        }
-
-        button:disabled {
-            background: #ccc;
         }
 
         .message-box {
@@ -78,6 +73,8 @@
             flex-direction: column;
             gap: 10px;
             margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
         }
 
         .message-box .message {
@@ -111,6 +108,18 @@
             color: #aaa;
             margin-left: auto;
         }
+
+        .chat-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .chat-controls button {
+            width: 49%;
+        }
+
     </style>
 </head>
 <body>
@@ -126,7 +135,6 @@
     <div id="messageForm" class="container" style="display: none;">
         <h3>Чат</h3>
         <div class="message-box" id="messageBox"></div>
-
         <input type="text" id="content" placeholder="Введите сообщение">
         <button id="sendMessageBtn">Отправить</button>
     </div>
