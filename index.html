@@ -1,171 +1,176 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Firebase Chat</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group Status</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-  <style>
-    body {
-      font-family: Arial;
-      background: #f2f2f2;
-      display: flex;
-      justify-content: center;
-      padding-top: 40px;
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #e8eaf0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 16px;
+        }
 
-    .container {
-      width: 500px;
-      background: white;
-      border-radius: 10px;
-      padding: 15px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
+        .card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 440px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
 
-    select, input, button {
-      padding: 8px;
-      margin: 5px 0;
-    }
+        .card h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+        }
 
-    .messages {
-      height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      padding: 10px;
-      border-radius: 5px;
-      margin-bottom: 10px;
-    }
+        #myInfo {
+            font-size: 14px;
+            color: #444;
+            margin-bottom: 16px;
+        }
 
-    .message {
-      margin-bottom: 8px;
-      padding: 6px 10px;
-      border-radius: 6px;
-      background: #e9e9e9;
-    }
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
 
-    .my {
-      background: #1976d2;
-      color: white;
-      text-align: right;
-    }
+        .status-btn {
+            padding: 13px 10px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: opacity 0.15s;
+        }
 
-    .input-area {
-      display: flex;
-      gap: 5px;
-    }
+        .status-btn:hover {
+            opacity: 0.88;
+        }
 
-    button {
-      background: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-  </style>
+        .btn-study   { background: #3dba4e; }
+        .btn-coffee  { background: #f5a800; }
+        .btn-game    { background: #00b0c8; }
+        .btn-home    { background: #7a7e88; }
+
+        .card h2.monitor-title {
+            margin-bottom: 16px;
+        }
+
+        .user-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .user-info strong {
+            display: block;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        .user-info small {
+            font-size: 13px;
+            color: #666;
+        }
+    </style>
 </head>
 <body>
 
-<div class="container">
-  <h3>Чат</h3>
+    <div class="card">
+        <h2>Мой профиль</h2>
+        <div id="myInfo">Загрузка...</div>
+        <div class="buttons-grid">
+            <button class="status-btn btn-study"  onclick="changeStatus('Учусь', '#3dba4e')">📚 Учусь</button>
+            <button class="status-btn btn-coffee" onclick="changeStatus('Кофе-брейк', '#f5a800')">☕ Кофе</button>
+            <button class="status-btn btn-game"   onclick="changeStatus('В игре', '#00b0c8')">🎮 В игре</button>
+            <button class="status-btn btn-home"   onclick="changeStatus('Дома', '#7a7e88')">🏠 Дома</button>
+        </div>
+    </div>
 
-  <input type="text" id="myName" placeholder="Ваше имя">
+    <div class="card">
+        <h2 class="monitor-title">Монитор группы</h2>
+        <div id="groupList">Загрузка...</div>
+    </div>
 
-  <label>Выберите собеседника:</label>
-  <select id="receiver">
-    <option value="Алмас">Алмас</option>
-    <option value="Аружан">Аружан</option>
-    <option value="Данияр">Данияр</option>
-  </select>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-  <div class="messages" id="messages"></div>
+        const URL = 'https://serysrvsaofnupgamgad.supabase.co';
+        const KEY = 'sb_publishable_Bn6zfU-wPY4_p-nqrGaocw_RuY34wT9';
+        const supabase = createClient(URL, KEY);
 
-  <div class="input-area">
-    <input type="text" id="messageInput" placeholder="Сообщение">
-    <button onclick="sendMessage()">➤</button>
-  </div>
-</div>
+        const MY_ID = '19bbeee9-fdd5-46c7-90c1-98cfb1278e90';
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } 
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+        window.changeStatus = async (text, color) => {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ status: text, color: color })
+                .eq('id', MY_ID);
 
-  const firebaseConfig = {
- apiKey: "AIzaSyCQsBDdxkA4dWhaTM6w9_jzzmEkZbh1Y4A",
-  authDomain: "project-3574e.firebaseapp.com",
-  projectId: "project-3574e",
-  storageBucket: "project-3574e.firebasestorage.app",
-  messagingSenderId: "173194596075",
-  appId: "1:173194596075:web:27a2ba28b0adac358978ae",
-  measurementId: "G-D602P1V71T"
-  };
+            if (error) {
+                alert("Ошибка! Проверьте RLS политики в Supabase.");
+                console.error(error);
+            } else {
+                fetchGroup();
+            }
+        };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+        async function fetchGroup() {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('username', { ascending: true });
 
-  const messagesDiv = document.getElementById("messages");
-  const receiverSelect = document.getElementById("receiver");
+            if (error) return console.error(error);
 
-  let unsubscribe = null;
+            const list = document.getElementById('groupList');
+            list.innerHTML = data.map(user => `
+                <div class="user-item">
+                    <div class="status-dot" style="background: ${user.color || '#ccc'}"></div>
+                    <div class="user-info">
+                        <strong>${user.username}</strong>
+                        <small>${user.status || 'Статус не задан'}</small>
+                    </div>
+                </div>
+            `).join('');
 
-  function getChatId(user1, user2) {
-    return [user1, user2].sort().join("_");
-  }
-
-  function loadMessages() {
-    const myName = document.getElementById("myName").value;
-    const receiver = receiverSelect.value;
-
-    if (!myName) return;
-
-    const chatId = getChatId(myName, receiver);
-
-    if (unsubscribe) unsubscribe();
-
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt")
-    );
-
-    unsubscribe = onSnapshot(q, (snapshot) => {
-      messagesDiv.innerHTML = "";
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const div = document.createElement("div");
-        div.classList.add("message");
-
-        if (data.username === myName) {
-          div.classList.add("my");
+            const me = data.find(u => u.id === MY_ID);
+            if (me) document.getElementById('myInfo').innerText = `Вы зашли как: ${me.username}`;
         }
 
-        div.textContent = data.username + ": " + data.text;
-        messagesDiv.appendChild(div);
-      });
-
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-  }
-
-  receiverSelect.addEventListener("change", loadMessages);
-  document.getElementById("myName").addEventListener("change", loadMessages);
-
-  window.sendMessage = async function() {
-    const myName = document.getElementById("myName").value;
-    const receiver = receiverSelect.value;
-    const text = document.getElementById("messageInput").value;
-
-    if (!myName || !text) return;
-
-    const chatId = getChatId(myName, receiver);
-
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      username: myName,
-      text: text,
-      createdAt: serverTimestamp()
-    });
-
-    document.getElementById("messageInput").value = "";
-  }
-</script>
-
+        fetchGroup();
+        setInterval(fetchGroup, 5000);
+    </script>
 </body>
 </html>
