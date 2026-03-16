@@ -122,7 +122,9 @@
         <h2 class="monitor-title">Монитор группы</h2>
         <div id="groupList">Загрузка...</div>
     </div>
-
+<button onclick="loginWithGoogle()" id="google-btn">
+  🔑 Войти через Google
+</button>
     <script type="module">
         import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
@@ -171,6 +173,28 @@
 
         fetchGroup();
         setInterval(fetchGroup, 5000);
+        async function loginWithGoogle() {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin + window.location.pathname
+    }
+  });
+  if (error) console.error('Ошибка входа:', error.message);
+}
+        // При загрузке страницы проверяй сессию
+const { data: { session } } = await supabase.auth.getSession();
+if (session) {
+  // пользователь вошёл, покажи профиль
+  console.log('Пользователь:', session.user.email);
+}
+
+// Слушай изменения авторизации
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN') {
+    // обнови UI
+  }
+});
     </script>
 </body>
 </html>
