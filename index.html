@@ -27,7 +27,6 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.07);
         }
 
-        /* ── ВХОД ── */
         .card-title {
             font-size: 18px;
             font-weight: 700;
@@ -53,7 +52,6 @@
         }
         .google-btn:hover { background: #f8f9fa; }
 
-        /* ── ПРОФИЛЬ ── */
         .profile-name {
             font-size: 17px;
             font-weight: 700;
@@ -172,7 +170,6 @@
             text-decoration: underline;
         }
 
-        /* ── МОНИТОР ── */
         .section-title {
             font-size: 16px;
             font-weight: 700;
@@ -233,7 +230,6 @@
         }
         .user-right .tcounter.study { color: #3dba4e; }
 
-        /* ── ЧАТ ── */
         #chatMessages {
             min-height: 60px;
             max-height: 200px;
@@ -266,6 +262,13 @@
         }
         .chat-send:hover { opacity: 0.88; }
         .chat-send svg { width: 17px; height: 17px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        .error-msg {
+            font-size: 13px;
+            color: #e53935;
+            text-align: center;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -345,6 +348,7 @@
             <svg viewBox="0 0 24 24"><polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
     </div>
+    <div class="error-msg" id="chatError" style="display:none"></div>
 </div>
 
 <script type="module">
@@ -356,92 +360,134 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUserId   = null;
 let currentUsername = null;
-let sessionStartAt  = null;
+let sessionStartAt  = null;   // Date объект — начало сессии
 let sessionInterval = null;
 let pingInterval    = null;
+let chatSubscribed  = false;
 
-// ── Форматирование времени ──────────────────────────────────────────────────
+// ── Форматирование ──────────────────────────────────────────────────────────
 
 function fmtSession(sec) {
+    if (sec < 0) sec = 0;
     if (sec < 60)   return `${sec} сек.`;
     if (sec < 3600) return `${Math.floor(sec/60)} мин. ${sec%60} сек.`;
     return `${Math.floor(sec/3600)}ч ${Math.floor((sec%3600)/60)}м ${sec%60}с`;
 }
 
 function fmtCounter(sec) {
+    if (sec < 0) sec = 0;
     const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
     return `${h}ч ${m}м ${s}с`;
 }
 
 function isOnline(lastSeen) {
-    return lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 120000;
+    if (!lastSeen) return false;
+    return (Date.now() - new Date(lastSeen).getTime()) < 120000;
 }
 
 // ── Таймер сессии ───────────────────────────────────────────────────────────
 
-function startSessionTimer(startedAt) {
+function startSessionTimer(isoString) {
     stopSessionTimer();
-    sessionStartAt = new Date(startedAt);
+    sessionStartAt = new Date(isoString);
     const el = document.getElementById('sessionTime');
-    const tick = () => el.textContent = fmtSession(Math.floor((Date.now()-sessionStartAt)/1000));
+    function tick() {
+        const sec = Math.floor((Date.now() - sessionStartAt.getTime()) / 1000);
+        el.textContent = fmtSession(sec);
+    }
     tick();
     sessionInterval = setInterval(tick, 1000);
 }
 
 function stopSessionTimer() {
-    clearInterval(sessionInterval); sessionInterval = null;
-    document.getElementById('sessionTime').textContent = '0 сек.';
+    if (sessionInterval) { clearInterval(sessionInterval); sessionInterval = null; }
     sessionStartAt = null;
+    document.getElementById('sessionTime').textContent = '0 сек.';
 }
 
-// ── Пинг ────────────────────────────────────────────────────────────────────
+// ── Пинг last_seen ──────────────────────────────────────────────────────────
 
 function startPing() {
     stopPing();
-    pingInterval = setInterval(() => {
-        if (currentUserId)
-            supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', currentUserId);
-    }, 30000);
+    // Сразу обновить
+    pingNow();
+    pingInterval = setInterval(pingNow, 30000);
 }
-function stopPing() { clearInterval(pingInterval); pingInterval = null; }
+
+async function pingNow() {
+    if (!currentUserId) return;
+    await supabase.from('profiles')
+        .update({ last_seen: new Date().toISOString() })
+        .eq('id', currentUserId);
+}
+
+function stopPing() {
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+}
 
 // ── Смена статуса ───────────────────────────────────────────────────────────
 
 async function changeStatus(text, color) {
     if (!currentUserId) return;
-    const now = new Date().toISOString();
-    await supabase.from('profiles').update({
-        status: text,
-        color,
-        last_seen: now,
-        study_started_at: text === 'Учусь' ? now : null
-    }).eq('id', currentUserId);
 
-    // Обновить подсветку кнопок
+    const now = new Date().toISOString();
+
+    const updates = {
+        status: text,
+        color: color,
+        last_seen: now
+    };
+
+    // study_started_at только для «Учусь»
+    if (text === 'Учусь') {
+        updates.study_started_at = now;
+    } else {
+        updates.study_started_at = null;
+    }
+
+    const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', currentUserId);
+
+    if (error) {
+        console.error('changeStatus error:', error);
+        alert('Ошибка смены статуса: ' + error.message);
+        return;
+    }
+
+    // Обновить подсветку
     document.querySelectorAll('.status-btn').forEach(b =>
         b.classList.toggle('active', b.dataset.status === text)
     );
 
-    fetchGroup();
+    await fetchGroup();
 }
 
 // Кнопки статуса
 document.querySelectorAll('.status-btn').forEach(btn => {
-    btn.addEventListener('click', () => changeStatus(btn.dataset.status, btn.dataset.color));
+    btn.addEventListener('click', () => {
+        changeStatus(btn.dataset.status, btn.dataset.color);
+    });
 });
 
-// Завершить сессию = поставить Дома
+// Завершить сессию
 document.getElementById('btnEnd').addEventListener('click', async () => {
     await changeStatus('Дома', '#7a7e88');
     stopSessionTimer();
+    // Запустить заново от текущего момента
+    startSessionTimer(new Date().toISOString());
 });
 
 // Перерыв
-document.getElementById('btnBreak').addEventListener('click', () => changeStatus('Кофе-брейк', '#f5a800'));
+document.getElementById('btnBreak').addEventListener('click', () => {
+    changeStatus('Кофе-брейк', '#f5a800');
+});
 
-// Выход / Выйти из аккаунта
+// Выход
 async function doLogout() {
-    stopSessionTimer(); stopPing();
+    stopSessionTimer();
+    stopPing();
     await supabase.auth.signOut();
 }
 document.getElementById('btnExit').addEventListener('click', doLogout);
@@ -450,46 +496,54 @@ document.getElementById('logoutLink').addEventListener('click', doLogout);
 // ── Монитор группы ──────────────────────────────────────────────────────────
 
 async function fetchGroup() {
-    const { data } = await supabase.from('profiles').select('*').order('username');
-    if (!data) return;
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, status, color, last_seen, study_started_at')
+        .order('username', { ascending: true });
+
+    if (error) { console.error('fetchGroup error:', error); return; }
+    if (!data)  return;
 
     const now = Date.now();
     const icons = { 'Учусь':'📚', 'Кофе-брейк':'☕', 'В игре':'🎮', 'Дома':'🏠' };
 
     document.getElementById('groupList').innerHTML = data.map(u => {
-        const online = isOnline(u.last_seen);
-        const ref    = u.study_started_at || u.last_seen;
-        const sec    = ref ? Math.max(0, Math.floor((now - new Date(ref).getTime()) / 1000)) : 0;
+        const online  = isOnline(u.last_seen);
+        const ref     = u.study_started_at || u.last_seen;
+        const sec     = ref ? Math.max(0, Math.floor((now - new Date(ref).getTime()) / 1000)) : 0;
         const isStudy = u.status === 'Учусь';
+        const icon    = icons[u.status] || '🏠';
 
         return `<div class="user-item">
             <div class="dot-wrap">
-                <div class="status-dot" style="background:${u.color||'#ccc'}"></div>
+                <div class="status-dot" style="background:${u.color || '#ccc'}"></div>
                 ${online ? '<div class="online-dot"></div>' : ''}
             </div>
             <div class="user-info">
-                <strong>${u.username}</strong>
-                <small>${u.status||'Статус не задан'}</small>
+                <strong>${u.username || '—'}</strong>
+                <small>${u.status || 'Статус не задан'}</small>
             </div>
             <div class="user-right">
-                <span class="loc">${icons[u.status]||'🏠'} ${u.status||'Дома'}</span>
-                <span class="tcounter${isStudy?' study':''}">${fmtCounter(sec)}</span>
+                <span class="loc">${icon} ${u.status || 'Дома'}</span>
+                <span class="tcounter${isStudy ? ' study' : ''}">${fmtCounter(sec)}</span>
             </div>
         </div>`;
     }).join('');
 
-    // Обновить профиль
+    // Обновить профиль текущего юзера
     if (currentUserId) {
         const me = data.find(u => u.id === currentUserId);
         if (me) {
-            document.getElementById('profileName').textContent = me.username || '';
+            document.getElementById('profileName').textContent = me.username || 'Профиль';
             currentUsername = me.username;
 
-            // Запустить таймер если не запущен
-            const ref = me.study_started_at || me.last_seen;
-            if (ref && !sessionInterval) startSessionTimer(ref);
+            // Запустить таймер если ещё не запущен
+            if (!sessionInterval) {
+                const ref = me.last_seen || new Date().toISOString();
+                startSessionTimer(ref);
+            }
 
-            // Подсветить текущий статус
+            // Подсветить активный статус
             document.querySelectorAll('.status-btn').forEach(b =>
                 b.classList.toggle('active', b.dataset.status === me.status)
             );
@@ -500,40 +554,84 @@ async function fetchGroup() {
 // ── Чат ─────────────────────────────────────────────────────────────────────
 
 async function fetchChat() {
-    const { data } = await supabase.from('messages')
-        .select('*').order('created_at').limit(50);
-    if (!data) return;
+    const { data, error } = await supabase
+        .from('messages')
+        .select('id, username, text, created_at')
+        .order('created_at', { ascending: true })
+        .limit(50);
+
+    if (error) { console.error('fetchChat error:', error); return; }
+    if (!data)  return;
 
     const box = document.getElementById('chatMessages');
     box.innerHTML = data.map(m =>
-        `<div class="chat-msg"><b>${m.username}:</b> ${m.text}</div>`
+        `<div class="chat-msg"><b>${m.username}:</b> ${escapeHtml(m.text)}</div>`
     ).join('');
     box.scrollTop = box.scrollHeight;
 }
 
+function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 async function sendMsg() {
-    if (!currentUserId) return;
-    const inp = document.getElementById('chatInput');
+    if (!currentUserId || !currentUsername) {
+        showChatError('Нужно войти чтобы писать в чат');
+        return;
+    }
+    const inp  = document.getElementById('chatInput');
     const text = inp.value.trim();
     if (!text) return;
+
     inp.value = '';
-    await supabase.from('messages').insert({ user_id: currentUserId, username: currentUsername, text });
+    hideChatError();
+
+    const { error } = await supabase.from('messages').insert({
+        user_id:  currentUserId,
+        username: currentUsername,
+        text:     text
+    });
+
+    if (error) {
+        console.error('sendMsg error:', error);
+        showChatError('Ошибка: ' + error.message);
+        inp.value = text; // вернуть текст
+        return;
+    }
     fetchChat();
 }
 
+function showChatError(msg) {
+    const el = document.getElementById('chatError');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function hideChatError() {
+    document.getElementById('chatError').style.display = 'none';
+}
+
 document.getElementById('chatSend').addEventListener('click', sendMsg);
-document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key==='Enter') sendMsg(); });
+document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendMsg();
+});
 
 function subscribeChat() {
-    supabase.channel('chat').on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' }, fetchChat
-    ).subscribe();
+    if (chatSubscribed) return;
+    chatSubscribed = true;
+    supabase.channel('public:messages')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages'
+        }, () => fetchChat())
+        .subscribe();
 }
 
 // ── UI по сессии ─────────────────────────────────────────────────────────────
 
 function updateUI(session) {
     const loggedIn = !!session;
+
     document.getElementById('loginCard').style.display   = loggedIn ? 'none'  : 'block';
     document.getElementById('profileCard').style.display = loggedIn ? 'block' : 'none';
     document.getElementById('chatCard').style.display    = loggedIn ? 'block' : 'none';
@@ -541,29 +639,40 @@ function updateUI(session) {
     if (loggedIn) {
         currentUserId = session.user.id;
         startPing();
-        supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', currentUserId);
         fetchChat();
         subscribeChat();
     } else {
-        currentUserId = null; currentUsername = null;
-        stopSessionTimer(); stopPing();
+        currentUserId   = null;
+        currentUsername = null;
+        stopSessionTimer();
+        stopPing();
+        chatSubscribed = false;
     }
     fetchGroup();
 }
 
 // ── Google OAuth ─────────────────────────────────────────────────────────────
 
-document.getElementById('googleBtn').addEventListener('click', () =>
-    supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.href } })
-);
+document.getElementById('googleBtn').addEventListener('click', async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: location.href }
+    });
+    if (error) console.error('OAuth error:', error);
+});
 
 // ── Старт ─────────────────────────────────────────────────────────────────────
 
-const { data: { session } } = await supabase.auth.getSession();
+const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+if (sessionError) console.error('getSession error:', sessionError);
+
 updateUI(session);
 
-supabase.auth.onAuthStateChange((_e, session) => updateUI(session));
+supabase.auth.onAuthStateChange((_event, session) => {
+    updateUI(session);
+});
 
+// Обновлять счётчики в мониторе каждые 5 сек
 setInterval(fetchGroup, 5000);
 </script>
 </body>
